@@ -1,4 +1,4 @@
-zhookeeper
-==========
+zhk
+===
 
-Zookeeper bindings for haskell (http://zookeeper.apache.org/)
+Zookeeper haskell bindings (http://zookeeper.apache.org/)
