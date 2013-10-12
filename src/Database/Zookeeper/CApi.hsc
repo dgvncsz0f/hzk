@@ -75,6 +75,7 @@ module Database.Zookeeper.CApi
 import           Foreign
 import           Foreign.C
 import qualified Data.ByteString as B
+import           Control.Concurrent
 import           Control.Applicative
 import           Database.Zookeeper.Types
 
@@ -246,7 +247,8 @@ wrapWatcher (Just fn) = c_watcherFn $ \_ cevent cstate cpath _ -> do
   path <- if (cpath == nullPtr)
             then return Nothing
             else fmap Just (B.packCString cpath)
-  fn event state path
+  _    <- forkIO (fn event state path)
+  return ()
 
 wrapAclCompletion :: AclCompletion -> IO (FunPtr CAclCompletionFn)
 wrapAclCompletion fn =
