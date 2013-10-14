@@ -1,7 +1,7 @@
 name:          hzk
 author:        dsouza@c0d3.xxx
 license:       BSD3
-version:       4.0.0
+version:       0.0.1
 category:      Database
 homepage:      http://github.com/dgvncsz0f/hzk
 synopsis:      Haskell client library for Apache Zookeeper
@@ -9,7 +9,7 @@ build-type:    Simple
 maintainer:    dgvncsz0f
 description:   A haskell binding to Apache Zookeeper C library
 license-file:  LICENSE
-cabal-version: >= 1.18
+cabal-version: >= 1.16
 
 source-repository head
   type:     git

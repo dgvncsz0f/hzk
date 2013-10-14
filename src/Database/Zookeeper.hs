@@ -387,7 +387,7 @@ addAuth (Zookeeper zh) scheme cert callback =
 -- The reason we do not always use the synchronous version is that it
 -- requires the caller to allocate memory and currently it is
 -- impossible to know (at least I could not figure it) how much memory
--- should be allocated. The asynchronous version has no such problems
+-- should be allocated. The asynchronous version has no such problem
 -- as it manages memory internally.
 
 -- $example
@@ -405,13 +405,17 @@ addAuth (Zookeeper zh) scheme cert callback =
 -- >   withZookeeper "localhost:2181" 1000 (Just $ watcher mvar) Nothing $ \_ -> do
 -- >     takeMVar mvar >>= print
 -- >     where
--- >       watcher mvar zh _ ConnectedState _ = getChildren zh "/" Nothing (putMVar mvar)
+-- >       watcher mvar zh _ ConnectedState _ =
+-- >         create zh "/foobar" Nothing OpenAclUnsafe [] $ \_ ->
+-- >           getChildren zh "/" Nothing (putMVar mvar)
 
 -- $notes
---   * Make sure you link against zookeeper_mt;
--- 
 --   * Watcher callbacks must never block;
 --
+--   * Make sure you link against zookeeper_mt;
+--
+--   * Make sure you are using the `threaded' (GHC) runtime;
+-- 
 --   * The connection is closed right before the 'withZookeeper'
 --     terminates;
 --
