@@ -71,17 +71,20 @@ import           Foreign
 import           Foreign.C
 import qualified Data.ByteString as B
 
+-- | Zookeeper connection handler
 newtype Zookeeper = Zookeeper (Ptr CZHandle)
 
+-- | The current clientid that may be used to reconnect
 newtype ClientID = ClientID (Ptr CClientID)
 
+-- | Timeout in milliseconds
 type Timeout = Int
 
 type Version = Int
 
+-- | Authentication scheme provider
 type Scheme = String
 
--- | Log levels
 data ZLogLevel = ZLogError
                | ZLogWarn
                | ZLogInfo
@@ -140,7 +143,6 @@ data Stat = Stat { statCzxId           :: Int64
                  }
           deriving (Eq, Show)
 
--- | Zookeeper event type (the *_EVENT flags)
 data Event = ChildEvent
            | CreatedEvent
            | DeletedEvent
@@ -151,7 +153,6 @@ data Event = ChildEvent
            -- ^ Used when the underlying C API has returned an unknown event type
            deriving (Eq, Show)
 
--- | Zookeeper connection state (the *_STATE flags)
 data State = ExpiredSessionState
            | AuthFailedState
            | ConnectingState
@@ -174,7 +175,6 @@ data Perm = CanRead
           -- ^ Can remove
           deriving (Eq, Show)
 
--- | A single ACL
 data Acl = Acl { aclScheme :: String
                -- ^ The ACL scheme (e.g. "ip", "world", "digest"
                , aclId     :: String
@@ -184,7 +184,6 @@ data Acl = Acl { aclScheme :: String
                }
          deriving (Eq, Show)
 
--- | ACL list
 data AclList = List [Acl]
              -- ^ A [non empty] list of ACLs
              | CreatorAll
@@ -209,7 +208,7 @@ type Watcher = Zookeeper
              -- ^ The event that has triggered the watche
              -> State
              -- ^ The connection state
-             -> Maybe B.ByteString
+             -> Maybe String
              -- ^ The znode for which the watched is triggered
              -> IO ()
 

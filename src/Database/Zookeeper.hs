@@ -29,8 +29,7 @@
 
 -- | Zookeeper client library
 module Database.Zookeeper
-       (
-         -- * Description
+       ( -- * Description
          -- $description
 
          -- * Example
@@ -38,37 +37,49 @@ module Database.Zookeeper
 
          -- * Notes
          -- $notes
-         get
-       , set
-       , create
+
+         -- * Connection
+         addAuth
+       , setWatcher
+       , withZookeeper
+
+         -- * Configuration/State
+       , getState
+       , getClientId
+       , setDebugLevel
+       , getRecvTimeout
+
+         -- * Reading
+       , get
        , exists
        , getAcl
+       , getChildren
+
+         -- * Writing
+       , set
+       , create
        , delete
        , setAcl
-       , addAuth
-       , getState
-       , setWatcher
-       , getClientId
-       , getChildren
-       , setDebugLevel
-       , withZookeeper
-       , getRecvTimeout
+
          -- * Types
+       , Scheme
+       , Timeout
+       , Watcher
+       , ClientID (..)
+       , Zookeeper ()
+
        , Acl (..)
        , Perm (..)
        , Stat (..)
        , Event (..)
        , State (..)
-       , Scheme
        , AclList (..)
-       , Timeout
        , Version
-       , ClientID (..)
        , ZLogLevel (..)
-       , Zookeeper ()
        , CreateFlag (..)
+
+         -- ** Error values
        , ZKError (..)
-       , Watcher
        ) where
 
 import           Foreign
@@ -294,7 +305,7 @@ set (Zookeeper zh) path mdata version =
       maybeUseAsCStringLen (Just s) f = B.useAsCStringLen s f
 
 -- | Sets the acl associated with a node. This operation is not
--- recursive on the children
+-- recursive on the children. See 'getAcl' for more information.
 setAcl :: Zookeeper
        -- ^ Zookeeper handle
        -> String
@@ -314,7 +325,11 @@ setAcl (Zookeeper zh) path version acls =
       rc <- c_zooSetAcl zh pathPtr (maybe (-1) fromIntegral version) aclPtr
       onZOK rc $ return ()
 
--- | Gets the acl associated with a node
+-- | Gets the acl associated with a node. Unexpectedly, 'setAcl' and
+-- 'getAcl' are not symmetric:
+--
+-- > setAcl zh path Nothing OpenAclUnsafe
+-- > getAcl zh path (..) -- yields AclList instead of OpenAclUnsafe
 getAcl :: Zookeeper
        -- ^ The zookeeper handle
        -> String
