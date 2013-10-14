@@ -1,15 +1,15 @@
 name:          hzk
-version:       4.0.0
-synopsis:      Haskell client library for Apache Zookeeper
-homepage:      http://github.com/dgvncsz0f/hzk
-category:      Database
 author:        dsouza@c0d3.xxx
 license:       BSD3
-license-file:  LICENSE
-maintainer:    dgvncsz0f
+version:       4.0.0
+category:      Database
+homepage:      http://github.com/dgvncsz0f/hzk
+synopsis:      Haskell client library for Apache Zookeeper
 build-type:    Simple
+maintainer:    dgvncsz0f
 description:   A haskell binding to Apache Zookeeper C library
-cabal-version: >= 1.16
+license-file:  LICENSE
+cabal-version: >= 1.18
 
 source-repository head
   type:     git
@@ -17,14 +17,32 @@ source-repository head
   location: git://github.com/dgvncsz0f/hzk.git
 
 library
-  default-language:    Haskell2010
-  include-dirs:        /usr/include/zookeeper
-  extra-libraries:     zookeeper_mt
   ghc-options:         -rtsopts -W -Wall
-  default-extensions:  ForeignFunctionInterface
+  include-dirs:        /usr/include/zookeeper
   build-depends:       base              (>= 4    && < 5)
                      , bytestring        (>= 0.10 && < 1)
+  other-modules:       Database.Zookeeper.CApi
+                     , Database.Zookeeper.Types
   hs-source-dirs:      src
   exposed-modules:     Database.Zookeeper
-                     , Database.Zookeeper.CApi
-                     , Database.Zookeeper.Types
+  extra-libraries:     zookeeper_mt
+  default-language:    Haskell2010
+  default-extensions:  ForeignFunctionInterface
+
+test-suite test-zookeeper
+  type:                exitcode-stdio-1.0
+  main-is:             test-zookeeper.hs
+  ghc-options:         -threaded -rtsopts
+  include-dirs:        /usr/include/zookeeper
+  other-modules:         Database.Zookeeper      
+                       , Database.Zookeeper.CApi
+                       , Database.Zookeeper.Types
+  build-depends:         base        (>= 4    && < 5)
+                       , tasty       (>= 0.3  && < 1)
+                       , bytestring  (>= 0.10 && < 1)
+                       , tasty-hunit (>= 0.2  && < 1)
+  hs-source-dirs:      src
+  extra-libraries:     zookeeper_mt
+  default-language:    Haskell2010
+  other-extensions:    OverloadedStrings
+  default-extensions:  ForeignFunctionInterface
