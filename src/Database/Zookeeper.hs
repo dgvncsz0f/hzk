@@ -27,35 +27,62 @@
 -- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 -- SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
--- | The public interface that provides access to the zookeeper
--- c-library
---
--- This module requires linking against the `zookeeper_mt' lib as it
--- uses async functions. However, all functions in this library are
--- synchronous, from the callers perspective. As such, make sure you
--- link using the -thread [GHC].
---
--- The following example lists all children of the ''/'' znode:
---
--- >  import Database.Zookeeper
--- >
--- >  watcher zh _ ConnectedState _ = getChildren zh "/" Nothing >>= print
--- >  watcher _ _ _ _               = return ()
--- >
--- >  withZookeeper "localhost:2181" 5000 (Just watcher) Nothing $ \zh -> do
--- >    threadDelay 50000
-module Database.Zookeeper where
+-- | Zookeeper client library
+module Database.Zookeeper
+       (
+         -- * Description
+         -- $description
+
+         -- * Example
+         -- $example
+
+         -- * Notes
+         -- $notes
+         get
+       , set
+       , create
+       , exists
+       , getAcl
+       , delete
+       , setAcl
+       , addAuth
+       , getState
+       , setWatcher
+       , getClientId
+       , getChildren
+       , setDebugLevel
+       , withZookeeper
+       , getRecvTimeout
+         -- * Types
+       , Acl (..)
+       , Perm (..)
+       , Stat (..)
+       , Event (..)
+       , State (..)
+       , Scheme
+       , AclList (..)
+       , Timeout
+       , Version
+       , ClientID (..)
+       , ZLogLevel (..)
+       , Zookeeper ()
+       , CreateFlag (..)
+       , ZKError (..)
+       , Watcher
+       ) where
 
 import           Foreign
 import           Foreign.C
+import           Control.Monad
 import qualified Data.ByteString as B
 import           Control.Exception
-import           Control.Concurrent.MVar
 import           Database.Zookeeper.CApi
 import           Database.Zookeeper.Types
 
 -- | Connects to the zookeeper cluster. This function may throw an
--- exception if a valid zookeeper handle could be created
+-- exception if a valid zookeeper handle could not be created.
+--
+-- The connection is terminated right before this function returns.
 withZookeeper :: String
               -- ^ The zookeeper endpoint to connect to. This is given
               -- as-is to the underlying C API. Briefly, host:port
@@ -115,11 +142,7 @@ getRecvTimeout (Zookeeper zh) = fmap fromIntegral $ c_zooRecvTimeout zh
 setDebugLevel :: ZLogLevel -> IO ()
 setDebugLevel = c_zooSetDebugLevel . fromLogLevel
 
--- | Checks if the current zookeeper connection state can't be recovered [== True].
-isUnrecoverable :: Zookeeper -> IO Bool
-isUnrecoverable (Zookeeper zh) = fmap ((== InvalidStateError) . toZKError) (c_isUnrecoverable zh)
-
--- | Creates a znode
+-- | Creates a znode (asynchornous)
 create :: Zookeeper
        -- ^ Zookeeper handle
        -> String
@@ -131,8 +154,10 @@ create :: Zookeeper
        -- ^ The initial ACL of the node. The ACL must not be empty
        -> [CreateFlag]
        -- ^ Optional, may be empty
-       -> IO (Either ZKError String)
-       -- ^ On error the user may observe the following values:
+       -> (Either ZKError String -> IO ())
+       -- ^ The callback function. On error the user may observe the
+       --   following values:
+       --
        --     * Left NoNodeError                  -> the parent znode does not exit
        --
        --     * Left NodeExistsError              -> the node already exists
@@ -144,14 +169,14 @@ create :: Zookeeper
        --     * Left BadArgumentsError            -> invalid input params
        --
        --     * Left InvalidStateError            -> Zookeeper state is either `ExpiredSessionState' or `AuthFailedState'
-create (Zookeeper zh) path mvalue acls flags =
+       -> IO ()
+create (Zookeeper zh) path mvalue acls flags callback =
   withCString path $ \pathPtr ->
     maybeUseAsCStringLen mvalue $ \(valuePtr, valueLen) ->
       withAclList acls $ \aclPtr -> do
-        mvar   <- newEmptyMVar
-        cStrFn <- wrapStringCompletion (putMVar mvar)
+        cStrFn <- wrapStringCompletion callback
         rc     <- c_zooACreate zh pathPtr valuePtr (fromIntegral valueLen) aclPtr (fromCreateFlags flags) cStrFn nullPtr
-        whenZOK rc (takeMVar mvar)
+        when (not $ isZOK rc) (callback $ Left (toZKError rc))
     where
       maybeUseAsCStringLen Nothing f  = f (nullPtr, -1)
       maybeUseAsCStringLen (Just s) f = B.useAsCStringLen s f
@@ -206,7 +231,7 @@ exists (Zookeeper zh) path mwatcher =
       cWatcher <- wrapWatcher mwatcher
       tryZ (c_zooWExists zh pathPtr cWatcher nullPtr statPtr) (toStat statPtr)
 
--- | Lists the children of a znode
+-- | Lists the children of a znode (asynchronous)
 getChildren :: Zookeeper
             -- ^ Zookeeper handle
             -> String
@@ -215,23 +240,15 @@ getChildren :: Zookeeper
             -> Maybe Watcher
             -- ^ The watch to be set at the server to notify the user
             -- if the node changes
-            -> IO (Either ZKError [String])
-            -- ^ On failure the user may observe the following values:
-            --
-            --     * Left NoNodeError       -> znode does not exit
-            --
-            --     * Left NoAuthError       -> client does not have permission
-            --
-            --     * Left BadArgumentsError -> invalid input parameters
-            --
-            --     * Left InvalidStateError -> Zookeeper state is either `ExpiredSessionState' or `AuthFailedState'
-getChildren (Zookeeper zh) path mwatcher = do
-  withCString path $ \pathPtr -> do
+            -> (Either ZKError [String] -> IO ())
+            -- ^ The callback function
+            -> IO ()
+getChildren (Zookeeper zh) path mwatcher callback = do
+  withCString path (\pathPtr -> do
     cWatcher <- wrapWatcher mwatcher
-    mvar     <- newEmptyMVar
-    cStrFn   <- wrapStringsCompletion (putMVar mvar)
+    cStrFn   <- wrapStringsCompletion callback
     rc       <- c_zooAWGetChildren zh pathPtr cWatcher nullPtr cStrFn nullPtr
-    whenZOK rc (takeMVar mvar)
+    when (not $ isZOK rc) (callback $ Left (toZKError rc)))
 
 -- | Gets the data associated with a znode
 get :: Zookeeper
@@ -242,14 +259,15 @@ get :: Zookeeper
     -> Maybe Watcher
     -- ^ When provided, a watch will be set at the server to notify
     -- the client if the node changes
-    -> IO (Either ZKError (Maybe B.ByteString, Stat))
-get (Zookeeper zh) path mwatcher =
+    -> (Either ZKError (Maybe B.ByteString, Stat) -> IO ())
+    -- ^ The callback function
+    -> IO ()
+get (Zookeeper zh) path mwatcher callback =
   withCString path $ \pathPtr -> do
     cWatcher <- wrapWatcher mwatcher
-    mvar     <- newEmptyMVar
-    cDataFn  <- wrapDataCompletion (putMVar mvar)
+    cDataFn  <- wrapDataCompletion callback
     rc       <- c_zooAWGet zh pathPtr cWatcher nullPtr cDataFn nullPtr
-    whenZOK rc (takeMVar mvar)
+    when (not $ isZOK rc) (callback $ Left (toZKError rc))
 
 -- | Sets the data associated with a znode
 set :: Zookeeper
@@ -265,17 +283,6 @@ set :: Zookeeper
     -- expected version. If `Nothing' is given the version check
     -- will not take place
     -> IO (Either ZKError Stat)
-    -- ^ On failure you may observe the following values:
-    --
-    --     * Left NoNodeError       -> znode does not exist
-    --
-    --     * Left NoAuthError       -> client does not have permission
-    --
-    --     * Left BadVersionError   -> expected version does not match actual version
-    --
-    --     * Left BadArgumentsError -> invalid input parameters
-    --
-    --     * Left InvalidStateError -> Zookeeper handle is either `ExpiredSessionState' or `AuthFailedState'
 set (Zookeeper zh) path mdata version =
   withCString path $ \pathPtr ->
     allocaStat $ \statPtr -> do
@@ -301,17 +308,6 @@ setAcl :: Zookeeper
        -> AclList
        -- ^ The ACL list to be set on the znode. The ACL must not be empty
        -> IO (Either ZKError ())
-       -- ^ On failure the following values may be returned:
-       --
-       --     * Left NoNodeError       -> the znode does not exist
-       --
-       --     * Left NoAuthError       -> client does not have permission
-       --
-       --     * Left InvalidACLError   -> invalid acl specified
-       --
-       --     * Left BadVersionError   -> expected version does not match actual version
-       --
-       --     * Left InvalidStateError -> Zookeeper handle is either `ExpiredSessionState' or `AuthFailedState'
 setAcl (Zookeeper zh) path version acls =
   withCString path $ \pathPtr ->
     withAclList acls $ \aclPtr -> do
@@ -324,20 +320,14 @@ getAcl :: Zookeeper
        -> String
        -- ^ The name of the znode expressed as a file name with slashes
        -- separating ancestors of the znode
-       -> IO (Either ZKError (AclList, Stat))
-       -- ^ On failure the user may observe the following values:
-       --
-       --     * Left NoNodeError       -> znode does not exit
-       --
-       --     * Left NoAuthError       -> client does not have permission
-       --
-       --     * Left BadArgumentsError -> invalid input parameters
-getAcl (Zookeeper zh) path =
+       -> (Either ZKError (AclList, Stat) -> IO ())
+       -- ^ The callback function
+       -> IO ()
+getAcl (Zookeeper zh) path callback =
   withCString path $ \pathPtr -> do
-    mvar   <- newEmptyMVar
-    cAclFn <- wrapAclCompletion (putMVar mvar)
+    cAclFn <- wrapAclCompletion callback
     rc     <- c_zooAGetAcl zh pathPtr cAclFn nullPtr
-    whenZOK rc (takeMVar mvar)
+    when (not $ isZOK rc) (callback $ Left (toZKError rc))
 
 -- | Specify application credentials
 --
@@ -355,21 +345,60 @@ addAuth :: Zookeeper
         -> Scheme
         -- ^ Scheme id of the authentication scheme. Natively supported:
         --
-        --     * "digest" -> password based authentication;
+        --     * "digest" -> password authentication;
+        --
+        --     * "ip"     -> client's IP address;
+        --
+        --     * "host"   -> client's hostname;
         -> B.ByteString
         -- ^ Applicaton credentials. The actual value depends on the scheme
-        -> IO (Either ZKError ())
-        -- ^ On error the following values may be observed:
-        --
-        --     * Left AuthFailedError     -> authenticaton failed
-        --
-        --     * Left InvalidStateError   -> Zookeeper handle is either `ExpiredSessionState' or `AuthFailedState'
-        --
-        --     * Left BadArgumentsError   -> invalid input parameters
-addAuth (Zookeeper zh) scheme cert =
+        -> (Either ZKError () -> IO ())
+        -- ^ The callback function
+        -> IO ()
+addAuth (Zookeeper zh) scheme cert callback =
   withCString scheme $ \schemePtr ->
     B.useAsCStringLen cert $ \(certPtr, certLen) -> do
-      mvar    <- newEmptyMVar
-      cVoidFn <- wrapVoidCompletion (putMVar mvar)
+      cVoidFn <- wrapVoidCompletion callback
       rc      <- c_zooAddAuth zh schemePtr certPtr (fromIntegral certLen) cVoidFn nullPtr
-      whenZOK rc (takeMVar mvar)
+      when (not $ isZOK rc) (callback $ Left (toZKError rc))
+
+-- $description
+--
+-- This library provides haskell bindings for zookeeper c-library. The
+-- underlying library exposes two classes of functions: synchronous
+-- and asynchronous. Whenever possible the synchronous functions are
+-- used.
+--
+-- The reason we do not always use the synchronous version is that it
+-- requires the caller to allocate memory and currently it is
+-- impossible to know (at least I could not figure it) how much memory
+-- should be allocated. The asynchronous version has no such problems
+-- as it manages memory internally.
+
+-- $example
+--
+-- The following snippet lists all children of the root znode:
+-- 
+-- > module Main where
+-- >
+-- > import Database.Zookeeper
+-- > import Control.Concurrent
+-- >
+-- > main :: IO ()
+-- > main = do
+-- >   mvar <- newEmptyMVar
+-- >   withZookeeper "localhost:2181" 1000 (Just $ watcher mvar) Nothing $ \_ -> do
+-- >     takeMVar mvar >>= print
+-- >     where
+-- >       watcher mvar zh _ ConnectedState _ = getChildren zh "/" Nothing (putMVar mvar)
+
+-- $notes
+--   * Make sure you link against zookeeper_mt;
+-- 
+--   * Watcher callbacks must never block;
+--
+--   * The connection is closed right before the 'withZookeeper'
+--     terminates;
+--
+--   * There is no yet support for multi operations (executing a
+--     series of operations atomically);

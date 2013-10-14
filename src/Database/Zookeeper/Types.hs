@@ -204,7 +204,8 @@ data CreateFlag = Sequence
 
 -- | The watcher function, which allows you to get notified about
 -- zookeeper events.
-type Watcher = Event
+type Watcher = Zookeeper
+             -> Event
              -- ^ The event that has triggered the watche
              -> State
              -- ^ The connection state

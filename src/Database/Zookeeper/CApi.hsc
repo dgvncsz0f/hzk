@@ -48,6 +48,7 @@ module Database.Zookeeper.CApi
        , wrapStringsCompletion
          -- * Error handling
        , tryZ
+       , isZOK
        , onZOK
        , whenZOK
          -- * C functions
@@ -75,7 +76,6 @@ module Database.Zookeeper.CApi
 import           Foreign
 import           Foreign.C
 import qualified Data.ByteString as B
-import           Control.Concurrent
 import           Control.Applicative
 import           Database.Zookeeper.Types
 
@@ -84,15 +84,18 @@ tryZ zkIO nextIO = do
   rc <- zkIO
   rc `onZOK` nextIO
 
+isZOK :: CInt -> Bool
+isZOK rc = rc == (#const ZOK)
+
 onZOK :: CInt -> IO a -> IO (Either ZKError a)
-onZOK (#const ZOK) nextIO = fmap Right nextIO
-onZOK rc _                = return (Left $ toZKError rc)
+onZOK rc nextIO
+  | isZOK rc  = fmap Right nextIO
+  | otherwise = return (Left $ toZKError rc)
 
 whenZOK :: CInt -> IO (Either ZKError a) -> IO (Either ZKError a)
-whenZOK rc succIO =
-  case rc of
-    (#const ZOK) -> succIO
-    _            -> return (Left $ toZKError rc)
+whenZOK rc succIO
+  | isZOK rc  = succIO
+  | otherwise = return (Left $ toZKError rc)
 
 toStat :: Ptr CStat -> IO Stat
 toStat ptr = Stat <$> (#peek struct Stat, czxid) ptr
@@ -241,14 +244,13 @@ toEvent code                           = UnknownEvent $ fromIntegral code
 
 wrapWatcher :: Maybe Watcher -> IO (FunPtr CWatcherFn)
 wrapWatcher Nothing   = return nullFunPtr
-wrapWatcher (Just fn) = c_watcherFn $ \_ cevent cstate cpath _ -> do
+wrapWatcher (Just fn) = c_watcherFn $ \zh cevent cstate cpath _ -> do
   let event = toEvent cevent
       state = toState cstate
   path <- if (cpath == nullPtr)
             then return Nothing
             else fmap Just (B.packCString cpath)
-  _    <- forkIO (fn event state path)
-  return ()
+  fn (Zookeeper zh) event state path
 
 wrapAclCompletion :: AclCompletion -> IO (FunPtr CAclCompletionFn)
 wrapAclCompletion fn =
