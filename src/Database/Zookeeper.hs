@@ -392,7 +392,8 @@ addAuth (Zookeeper zh) scheme cert callback =
 
 -- $example
 --
--- The following snippet lists all children of the root znode:
+-- The following snippet creates a "/foobar" znode, then it lists and
+-- prints all children of the "/" znode:
 -- 
 -- > module Main where
 -- >
