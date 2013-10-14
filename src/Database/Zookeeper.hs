@@ -166,20 +166,7 @@ create :: Zookeeper
        -> [CreateFlag]
        -- ^ Optional, may be empty
        -> (Either ZKError String -> IO ())
-       -- ^ The callback function. On error the user may observe the
-       --   following values:
-       --
-       --     * Left NoNodeError                  -> the parent znode does not exit
-       --
-       --     * Left NodeExistsError              -> the node already exists
-       --
-       --     * Left NoAuthError                  -> client does not have permission
-       --
-       --     * Left NoChildrenForEphemeralsError -> cannot create children of ephemeral nodes
-       --
-       --     * Left BadArgumentsError            -> invalid input params
-       --
-       --     * Left InvalidStateError            -> Zookeeper state is either `ExpiredSessionState' or `AuthFailedState'
+       -- ^ The callback function
        -> IO ()
 create (Zookeeper zh) path mvalue acls flags callback =
   withCString path $ \pathPtr ->
@@ -192,7 +179,7 @@ create (Zookeeper zh) path mvalue acls flags callback =
       maybeUseAsCStringLen Nothing f  = f (nullPtr, -1)
       maybeUseAsCStringLen (Just s) f = B.useAsCStringLen s f
 
--- | Delete a znode in zookeeper
+-- | Delete a znode in zookeeper (synchronous)
 delete :: Zookeeper
        -- ^ Zookeeper handle
        -> String
@@ -204,21 +191,11 @@ delete :: Zookeeper
        -- expected version. If `Nothing' is given the version check
        -- will not take place
        -> IO (Either ZKError ())
-       -- ^ If an error occurs, you may observe the following values:
-       --     * Left NoNodeError       -> znode does not exist
-       --
-       --     * Left NoAuthError       -> client does not have permission
-       --
-       --     * Left BadVersionError   -> expected version does not match actual version
-       --
-       --     * Left BadArgumentsError -> invalid input parameters
-       --
-       --     * Left InvalidStateError -> Zookeeper state is either `ExpiredSessionState' or `AuthFailedState'
 delete (Zookeeper zh) path mversion =
   withCString path $ \pathPtr ->
     tryZ (c_zooDelete zh pathPtr (maybe (-1) fromIntegral mversion)) (return ())
 
--- ^ Checks the existence of a znode
+-- ^ Checks the existence of a znode (synchronous)
 exists :: Zookeeper
        -- ^ Zookeeper handle
        -> String
@@ -228,14 +205,6 @@ exists :: Zookeeper
        -- ^ This is set even if the znode does not exist. This allows
        -- users to watch znodes to appear
        -> IO (Either ZKError Stat)
-       -- ^ If an error occurs, you may observe the following values:
-       --     * Left NoNodeError       -> znode does not exist
-       --
-       --     * Left NoAuthError       -> client does not have permission
-       --
-       --     * Left BadArgumentsError -> invalid input parameters
-       --
-       --     * Left InvalidStateError -> Zookeeper state is either `ExpiredSessionState' or `AuthFailedState'
 exists (Zookeeper zh) path mwatcher =
   withCString path $ \pathPtr ->
     allocaStat $ \statPtr -> do
@@ -261,7 +230,7 @@ getChildren (Zookeeper zh) path mwatcher callback = do
     rc       <- c_zooAWGetChildren zh pathPtr cWatcher nullPtr cStrFn nullPtr
     when (not $ isZOK rc) (callback $ Left (toZKError rc)))
 
--- | Gets the data associated with a znode
+-- | Gets the data associated with a znode (asynchronous)
 get :: Zookeeper
     -- ^ The Zookeeper handle
     -> String
@@ -280,7 +249,7 @@ get (Zookeeper zh) path mwatcher callback =
     rc       <- c_zooAWGet zh pathPtr cWatcher nullPtr cDataFn nullPtr
     when (not $ isZOK rc) (callback $ Left (toZKError rc))
 
--- | Sets the data associated with a znode
+-- | Sets the data associated with a znode (synchronous)
 set :: Zookeeper
     -- ^ Zookeeper handle
     -> String
@@ -305,7 +274,7 @@ set (Zookeeper zh) path mdata version =
       maybeUseAsCStringLen (Just s) f = B.useAsCStringLen s f
 
 -- | Sets the acl associated with a node. This operation is not
--- recursive on the children. See 'getAcl' for more information.
+-- recursive on the children. See 'getAcl' for more information (synchronous)
 setAcl :: Zookeeper
        -- ^ Zookeeper handle
        -> String
@@ -325,7 +294,7 @@ setAcl (Zookeeper zh) path version acls =
       rc <- c_zooSetAcl zh pathPtr (maybe (-1) fromIntegral version) aclPtr
       onZOK rc $ return ()
 
--- | Gets the acl associated with a node. Unexpectedly, 'setAcl' and
+-- | Gets the acl associated with a node (asynchronous). Unexpectedly, 'setAcl' and
 -- 'getAcl' are not symmetric:
 --
 -- > setAcl zh path Nothing OpenAclUnsafe
@@ -344,7 +313,7 @@ getAcl (Zookeeper zh) path callback =
     rc     <- c_zooAGetAcl zh pathPtr cAclFn nullPtr
     when (not $ isZOK rc) (callback $ Left (toZKError rc))
 
--- | Specify application credentials
+-- | Specify application credentials (asynchronous)
 --
 -- The application calls this function to specify its credentials for
 -- purposes of authentication. The server will use the security
@@ -360,11 +329,11 @@ addAuth :: Zookeeper
         -> Scheme
         -- ^ Scheme id of the authentication scheme. Natively supported:
         --
-        --     * "digest" -> password authentication;
+        --     * ''digest'' -> password authentication;
         --
-        --     * "ip"     -> client's IP address;
+        --     * ''ip''     -> client's IP address;
         --
-        --     * "host"   -> client's hostname;
+        --     * ''host''   -> client's hostname;
         -> B.ByteString
         -- ^ Applicaton credentials. The actual value depends on the scheme
         -> (Either ZKError () -> IO ())
@@ -392,8 +361,8 @@ addAuth (Zookeeper zh) scheme cert callback =
 
 -- $example
 --
--- The following snippet creates a "/foobar" znode, then it lists and
--- prints all children of the "/" znode:
+-- The following snippet creates a ''/foobar'' znode, then it lists and
+-- prints all children of the root znode:
 -- 
 -- > module Main where
 -- >

@@ -1,7 +1,7 @@
 name:          hzk
 author:        DiegoSouza
 license:       BSD3
-version:       0.0.1
+version:       0.0.2
 category:      Database
 homepage:      http://github.com/dgvncsz0f/hzk
 synopsis:      Haskell client library for Apache Zookeeper
@@ -27,7 +27,6 @@ library
   exposed-modules:     Database.Zookeeper
   extra-libraries:     zookeeper_mt
   default-language:    Haskell2010
-  default-extensions:  ForeignFunctionInterface
 
 test-suite test-zookeeper
   type:                exitcode-stdio-1.0
@@ -44,5 +43,3 @@ test-suite test-zookeeper
   hs-source-dirs:      src
   extra-libraries:     zookeeper_mt
   default-language:    Haskell2010
-  other-extensions:    OverloadedStrings
-  default-extensions:  ForeignFunctionInterface
