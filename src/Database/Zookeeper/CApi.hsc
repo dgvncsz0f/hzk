@@ -185,7 +185,8 @@ withAclList ReadAclUnsafe cont = cont c_zooReadAclUnsafe
 withAclList (List acls) cont   =
   allocaBytes (#size struct ACL_vector) $ \aclvPtr -> do
     (#poke struct ACL_vector, count) aclvPtr count
-    allocaBytes (count * (#size struct ACL)) $ \aclPtr ->
+    allocaBytes (count * (#size struct ACL)) $ \aclPtr -> do
+      (#poke struct ACL_vector, data) aclvPtr aclPtr
       pokeAcls acls aclvPtr aclPtr
     where
       count = length acls
@@ -249,7 +250,7 @@ wrapWatcher (Just fn) = c_watcherFn $ \zh cevent cstate cpath _ -> do
       state = toState cstate
   path <- if (cpath == nullPtr)
             then return Nothing
-            else fmap Just (B.packCString cpath)
+            else fmap Just (peekCString cpath)
   fn (Zookeeper zh) event state path
 
 wrapAclCompletion :: AclCompletion -> IO (FunPtr CAclCompletionFn)
