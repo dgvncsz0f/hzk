@@ -184,7 +184,7 @@ create (Zookeeper zh) path mvalue acls flags callback =
       withAclList acls $ \aclPtr -> do
         cStrFn <- wrapStringCompletion callback
         rc     <- c_zooACreate zh pathPtr valuePtr (fromIntegral valueLen) aclPtr (fromCreateFlags flags) cStrFn nullPtr
-        when (not $ isZOK rc) (callback $ Left (toZKError rc))
+        unless (isZOK rc) (callback $ Left (toZKError rc))
     where
       maybeUseAsCStringLen Nothing f  = f (nullPtr, -1)
       maybeUseAsCStringLen (Just s) f = B.useAsCStringLen s f
@@ -233,12 +233,12 @@ getChildren :: Zookeeper
             -> (Either ZKError [String] -> IO ())
             -- ^ The callback function
             -> IO ()
-getChildren (Zookeeper zh) path mwatcher callback = do
+getChildren (Zookeeper zh) path mwatcher callback =
   withCString path (\pathPtr -> do
     cWatcher <- wrapWatcher mwatcher
     cStrFn   <- wrapStringsCompletion callback
     rc       <- c_zooAWGetChildren zh pathPtr cWatcher nullPtr cStrFn nullPtr
-    when (not $ isZOK rc) (callback $ Left (toZKError rc)))
+    unless (isZOK rc) (callback $ Left (toZKError rc)))
 
 -- | Gets the data associated with a znode (asynchronous)
 get :: Zookeeper
@@ -257,7 +257,7 @@ get (Zookeeper zh) path mwatcher callback =
     cWatcher <- wrapWatcher mwatcher
     cDataFn  <- wrapDataCompletion callback
     rc       <- c_zooAWGet zh pathPtr cWatcher nullPtr cDataFn nullPtr
-    when (not $ isZOK rc) (callback $ Left (toZKError rc))
+    unless (isZOK rc) (callback $ Left (toZKError rc))
 
 -- | Sets the data associated with a znode (synchronous)
 set :: Zookeeper
@@ -275,7 +275,7 @@ set :: Zookeeper
     -> IO (Either ZKError Stat)
 set (Zookeeper zh) path mdata version =
   withCString path $ \pathPtr ->
-    allocaStat $ \statPtr -> do
+    allocaStat $ \statPtr ->
       maybeUseAsCStringLen mdata $ \(dataPtr, dataLen) -> do
         rc <- c_zooSet2 zh pathPtr dataPtr (fromIntegral dataLen) (maybe (-1) fromIntegral version) statPtr
         onZOK rc (toStat statPtr)
@@ -321,7 +321,7 @@ getAcl (Zookeeper zh) path callback =
   withCString path $ \pathPtr -> do
     cAclFn <- wrapAclCompletion callback
     rc     <- c_zooAGetAcl zh pathPtr cAclFn nullPtr
-    when (not $ isZOK rc) (callback $ Left (toZKError rc))
+    unless (isZOK rc) (callback $ Left (toZKError rc))
 
 -- | Specify application credentials (asynchronous)
 --
@@ -354,7 +354,7 @@ addAuth (Zookeeper zh) scheme cert callback =
     B.useAsCStringLen cert $ \(certPtr, certLen) -> do
       cVoidFn <- wrapVoidCompletion callback
       rc      <- c_zooAddAuth zh schemePtr certPtr (fromIntegral certLen) cVoidFn nullPtr
-      when (not $ isZOK rc) (callback $ Left (toZKError rc))
+      unless (isZOK rc) (callback $ Left (toZKError rc))
 
 -- $description
 --
