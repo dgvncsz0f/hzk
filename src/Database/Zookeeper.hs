@@ -205,7 +205,7 @@ delete (Zookeeper zh) path mversion =
   withCString path $ \pathPtr ->
     tryZ (c_zooDelete zh pathPtr (maybe (-1) fromIntegral mversion)) (return ())
 
--- ^ Checks the existence of a znode (synchronous)
+-- ^ | Checks the existence of a znode (synchronous)
 exists :: Zookeeper
        -- ^ Zookeeper handle
        -> String
