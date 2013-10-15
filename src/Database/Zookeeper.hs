@@ -27,7 +27,17 @@
 -- (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 -- SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
--- | Zookeeper client library
+--------------------------------------------------------------------------------
+-- |
+-- Module        : Database.Zookeeper
+-- Copyright     : (C) 2013 Diego Souza
+-- License       : BSD-style (see the file LICENSE)
+--
+-- Maintainer    : Diego Souza <dsouza@c0d3.xxx>
+-- Stability     : experimental
+--
+-- Zookeeper client library
+--------------------------------------------------------------------------------
 module Database.Zookeeper
        ( -- * Description
          -- $description
