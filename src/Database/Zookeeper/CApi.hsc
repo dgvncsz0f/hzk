@@ -35,6 +35,7 @@ module Database.Zookeeper.CApi
        , toState
        , toZKError
        , allocaStat
+       , toClientId
          -- * Haskell to C
        , withAclList
        , wrapWatcher
@@ -160,6 +161,9 @@ toStringList strvPtr = do
       buildList acc n ptr = do
         item <- peek ptr >>= peekCString
         buildList (item : acc) (n-1) (ptr `plusPtr` (sizeOf ptr))
+
+toClientId :: Ptr CClientID -> IO Int64
+toClientId clientPtr = (#peek clientid_t, client_id) clientPtr
 
 allocaStat :: (Ptr CStat -> IO a) -> IO a
 allocaStat fun = allocaBytes (#size struct Stat) fun

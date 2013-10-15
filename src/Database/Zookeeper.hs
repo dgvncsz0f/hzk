@@ -63,6 +63,7 @@ module Database.Zookeeper
        , get
        , exists
        , getAcl
+       , toClientId
        , getChildren
 
          -- * Writing
@@ -75,7 +76,7 @@ module Database.Zookeeper
        , Scheme
        , Timeout
        , Watcher
-       , ClientID (..)
+       , ClientID ()
        , Zookeeper ()
 
        , Acl (..)
