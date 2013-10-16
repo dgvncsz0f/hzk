@@ -130,6 +130,17 @@ testGet zh = testGroup "get"
     where
       watcher mvar _ event _ mpath = putMVar mvar (event, mpath)
 
+testOwnsEphemeral zh = testGroup "ownsEphemeral"
+  [ testCase "get ephemeral" $ do
+    let path = chroot "/testGet#6"
+    mvar <- newEmptyMVar
+    create zh path Nothing OpenAclUnsafe [Ephemeral] (\_ ->
+      get zh path Nothing (\(Right (_, stat)) -> do
+        myId <- getClientId zh
+        putMVar mvar =<< ownsEphemeral myId stat))
+    takeMVar mvar @? "owns ephemeral"
+  ]
+
 testGetChildren zh = testGroup "getChildren"
   [ testCase "getChildren without znode" $ do
       let path = chroot "/testGetChildren#1"
@@ -226,6 +237,7 @@ main = do
                                             , testExists zh
                                             , testGetAcl zh
                                             , testGetChildren zh
+                                            , testOwnsEphemeral zh
                                             ]
       _              -> exitFailure
     where
