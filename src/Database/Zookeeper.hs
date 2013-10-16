@@ -63,8 +63,8 @@ module Database.Zookeeper
        , get
        , exists
        , getAcl
-       , toClientId
        , getChildren
+       , ownsEphemeral
 
          -- * Writing
        , set
@@ -134,6 +134,14 @@ withZookeeper endpoint timeout watcher clientId io = do
       cClientIdPtr = case clientId of
                        Nothing             -> nullPtr
                        Just (ClientID ptr) -> ptr
+
+-- | Test if the ephemeral node has been created by this
+-- clientid. This function shall return False if the node is not
+-- ephemeral or is not owned by this clientid.
+ownsEphemeral :: ClientID -> Stat -> IO Bool
+ownsEphemeral (ClientID clientPtr) stat = do
+  uid <- toClientId clientPtr
+  return (statEphemeralOwner stat == Just uid)
 
 -- | Sets [or redefines] the watcher function
 setWatcher :: Zookeeper
