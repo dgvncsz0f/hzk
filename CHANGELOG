@@ -1,3 +1,10 @@
+-*- mode: text; -*-
+
+v0.1.0 | 2013-10-15
+  * ClientID is now opaque | dgvncsz0f
+
+  * toClientID: retrieves the integer representation of ClientID | dgvncsz0f
+
 v0.0.2 | 2013-10-14
   * documentation stuff | dgvncsz0f
 
