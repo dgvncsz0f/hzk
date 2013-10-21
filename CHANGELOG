@@ -1,8 +1,11 @@
 -*- mode: text; -*-
 
+v1.0.0 | 2013-10-21
+  * Version is an alias to Int32 (was Int)  | dgvncsz0f
+  * ClientID is instance of Eq
+
 v0.1.0 | 2013-10-15
   * ClientID is now opaque | dgvncsz0f
-
   * ownsEphemeral function | dgvncsz0f
 
 v0.0.2 | 2013-10-14

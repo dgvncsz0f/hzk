@@ -76,11 +76,12 @@ newtype Zookeeper = Zookeeper (Ptr CZHandle)
 
 -- | The current clientid that may be used to reconnect
 newtype ClientID = ClientID (Ptr CClientID)
+                 deriving (Eq)
 
 -- | Timeout in milliseconds
 type Timeout = Int
 
-type Version = Int
+type Version = Int32
 
 -- | Authentication scheme provider
 type Scheme = String
