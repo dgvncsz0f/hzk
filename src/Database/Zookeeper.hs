@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 -- This file is part of zhk
 --
 -- All rights reserved.
@@ -93,8 +95,8 @@ module Database.Zookeeper
        , ZKError (..)
        ) where
 
-import           Foreign
 import           Foreign.C
+import           Foreign.Safe
 import           Control.Monad
 import qualified Data.ByteString as B
 import           Control.Exception

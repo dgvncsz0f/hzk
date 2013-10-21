@@ -1,3 +1,4 @@
+{-# LANGUAGE Safe                     #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 
 -- This file is part of zhk
@@ -74,8 +75,8 @@ module Database.Zookeeper.CApi
 
 #include <zookeeper.h>
 
-import           Foreign
 import           Foreign.C
+import           Foreign.Safe
 import qualified Data.ByteString as B
 import           Control.Applicative
 import           Database.Zookeeper.Types

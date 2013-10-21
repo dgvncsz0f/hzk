@@ -1,3 +1,5 @@
+{-# LANGUAGE Safe #-}
+
 -- This file is part of zhk
 --
 -- All rights reserved.
@@ -67,8 +69,8 @@ module Database.Zookeeper.Types
        , CStringsCompletionFn
        ) where
 
-import           Foreign
 import           Foreign.C
+import           Foreign.Safe
 import qualified Data.ByteString as B
 
 -- | Zookeeper connection handler
