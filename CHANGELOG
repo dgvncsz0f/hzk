@@ -1,5 +1,8 @@
 -*- mode: text; -*-
 
+v1.0.1 | 2013-10-21
+  * using Foreign.Safe instead of Foreign | dgvncsz0f
+
 v1.0.0 | 2013-10-21
   * Version is an alias to Int32 (was Int)  | dgvncsz0f
   * ClientID is instance of Eq
