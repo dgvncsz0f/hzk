@@ -1,5 +1,8 @@
 -*- mode: text; -*-
 
+v2.0.0 | 2013-12-05
+  * create, getChildren, getStat are now synchronous | dgvncsz0f
+
 v1.0.1 | 2013-10-21
   * using Foreign.Safe instead of Foreign | dgvncsz0f
 
