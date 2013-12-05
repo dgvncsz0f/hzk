@@ -34,20 +34,20 @@ module Database.Zookeeper.CApi
        ( -- * C to Haskell
          toStat
        , toState
+       , toAclList
        , toZKError
        , allocaStat
        , toClientId
+       , toStringList
+       , allocaAclVec
+       , allocaStrVec
          -- * Haskell to C
        , withAclList
        , wrapWatcher
        , fromLogLevel
        , fromCreateFlag
        , fromCreateFlags
-       , wrapAclCompletion
-       , wrapDataCompletion
        , wrapVoidCompletion
-       , wrapStringCompletion
-       , wrapStringsCompletion
          -- * Error handling
        , tryZ
        , isZOK
@@ -55,31 +55,30 @@ module Database.Zookeeper.CApi
        , whenZOK
          -- * C functions
        , c_zooSet2
-       , c_zooAWGet
+       , c_zooWGet
        , c_zooState
        , c_zooDelete
        , c_zooSetAcl
-       , c_zooAGetAcl
-       , c_zooACreate
+       , c_zooCreate
+       , c_zooGetAcl
        , c_zooAddAuth
        , c_zooWExists
        , c_zooClientId
        , c_zookeeperInit
-       , c_zookeeperClose
        , c_zooSetWatcher
+       , c_zookeeperClose
        , c_zooRecvTimeout
        , c_isUnrecoverable
-       , c_zooAWGetChildren
+       , c_zooWGetChildren
        , c_zooSetDebugLevel
        ) where
 
 #include <zookeeper.h>
 
-import           Foreign.C
-import           Foreign.Safe
-import qualified Data.ByteString as B
-import           Control.Applicative
-import           Database.Zookeeper.Types
+import Foreign.C
+import Foreign.Safe
+import Control.Applicative
+import Database.Zookeeper.Types
 
 tryZ :: IO CInt -> IO a -> IO (Either ZKError a)
 tryZ zkIO nextIO = do
@@ -183,12 +182,18 @@ toAclList aclvPtr = do
                    <*> (fmap toPerms ((#peek struct ACL, perms) ptr))
         buildList (acl : acc) (n-1) (ptr `plusPtr` (#size struct ACL))
 
+allocaStrVec :: (Ptr CStrVec -> IO a) -> IO a
+allocaStrVec = allocaBytes (#size struct String_vector)
+
+allocaAclVec :: (Ptr CAclVec -> IO a) -> IO a
+allocaAclVec = allocaBytes (#size struct ACL_vector)
+
 withAclList :: AclList -> (Ptr CAclVec -> IO a) -> IO a
 withAclList CreatorAll cont    = cont c_zooCreatorAclAll
 withAclList OpenAclUnsafe cont = cont c_zooOpenAclUnsafe
 withAclList ReadAclUnsafe cont = cont c_zooReadAclUnsafe
 withAclList (List acls) cont   =
-  allocaBytes (#size struct ACL_vector) $ \aclvPtr -> do
+  allocaAclVec $ \aclvPtr -> do
     (#poke struct ACL_vector, count) aclvPtr count
     allocaBytes (count * (#size struct ACL)) $ \aclPtr -> do
       (#poke struct ACL_vector, data) aclvPtr aclPtr
@@ -258,34 +263,6 @@ wrapWatcher (Just fn) = c_watcherFn $ \zh cevent cstate cpath _ -> do
             else fmap Just (peekCString cpath)
   fn (Zookeeper zh) event state path
 
-wrapAclCompletion :: AclCompletion -> IO (FunPtr CAclCompletionFn)
-wrapAclCompletion fn =
-  c_aclCompletionFn $ \rc aclPtr statPtr _ ->
-    fn =<< (onZOK rc $ do
-      aclList <- toAclList aclPtr
-      stat    <- toStat statPtr
-      return (aclList, stat))
-
-wrapDataCompletion :: DataCompletion -> IO (FunPtr CDataCompletionFn)
-wrapDataCompletion fn =
-  c_dataCompletionFn $ \rc valPtr valLen statPtr _ ->
-    fn =<< (onZOK rc $ do
-      stat <- toStat statPtr
-      if (valLen == -1)
-        then return (Nothing, stat)
-        else fmap (\s -> (Just s, stat)) (B.packCStringLen (valPtr, fromIntegral valLen)))
-
-wrapStringCompletion :: StringCompletion -> IO (FunPtr CStringCompletionFn)
-wrapStringCompletion fn =
-  c_stringCompletionFn $ \rc strPtr _ ->
-    fn =<< (onZOK rc $ do
-      peekCString strPtr)
-
-wrapStringsCompletion :: StringsCompletion -> IO (FunPtr CStringsCompletionFn)
-wrapStringsCompletion fn =
-  c_stringsCompletionFn $ \rc strvPtr _ ->
-    fn =<< (onZOK rc (toStringList strvPtr))
-
 wrapVoidCompletion :: VoidCompletion -> IO (FunPtr CVoidCompletionFn)
 wrapVoidCompletion fn =
   c_voidCompletionFn $ \rc _ -> (fn =<< onZOK rc (return ()))
@@ -293,22 +270,6 @@ wrapVoidCompletion fn =
 foreign import ccall safe "wrapper"
   c_watcherFn :: CWatcherFn
                  -> IO (FunPtr CWatcherFn)
-
-foreign import ccall safe "wrapper"
-  c_dataCompletionFn :: CDataCompletionFn
-                        -> IO (FunPtr CDataCompletionFn)
-
-foreign import ccall safe "wrapper"
-  c_stringsCompletionFn :: CStringsCompletionFn
-                        -> IO (FunPtr CStringsCompletionFn)
-
-foreign import ccall safe "wrapper"
-  c_stringCompletionFn :: CStringCompletionFn
-                       -> IO (FunPtr CStringCompletionFn)
-
-foreign import ccall safe "wrapper"
-  c_aclCompletionFn :: CAclCompletionFn
-                    -> IO (FunPtr CAclCompletionFn)
 
 foreign import ccall safe "wrapper"
   c_voidCompletionFn :: CVoidCompletionFn
@@ -329,8 +290,8 @@ foreign import ccall safe "zookeeper.h zookeeper_close"
 foreign import ccall safe "zookeeper.h zoo_set_watcher"
   c_zooSetWatcher :: Ptr CZHandle -> FunPtr CWatcherFn -> IO ()
 
-foreign import ccall safe "zookeeper.h zoo_acreate"
-  c_zooACreate :: Ptr CZHandle -> CString -> CString -> CInt -> Ptr CAclVec -> CInt -> FunPtr CStringCompletionFn -> Ptr () -> IO CInt
+foreign import ccall safe "zookeeper.h zoo_create"
+  c_zooCreate :: Ptr CZHandle -> CString -> CString -> CInt -> Ptr CAclVec -> CInt -> CString -> CInt -> IO CInt
 
 foreign import ccall safe "zookeeper.h zoo_delete"
   c_zooDelete :: Ptr CZHandle -> CString -> CInt -> IO CInt
@@ -356,20 +317,20 @@ foreign import ccall safe "zookeeper.h is_unrecoverable"
 foreign import ccall safe "zookeeper.h zoo_set_debug_level"
   c_zooSetDebugLevel :: CInt -> IO ()
 
-foreign import ccall safe "zookeeper.h zoo_aget_acl"
-  c_zooAGetAcl :: Ptr CZHandle -> CString -> FunPtr CAclCompletionFn -> Ptr () -> IO CInt
+foreign import ccall safe "zookeeper.h zoo_get_acl"
+  c_zooGetAcl :: Ptr CZHandle -> CString -> Ptr CAclVec -> Ptr CStat -> IO CInt
 
 foreign import ccall safe "zookeeper.h zoo_set_acl"
   c_zooSetAcl :: Ptr CZHandle -> CString -> CInt -> Ptr CAclVec -> IO CInt
 
-foreign import ccall safe "zookeeper.h zoo_awget"
-  c_zooAWGet :: Ptr CZHandle -> CString -> FunPtr CWatcherFn -> Ptr () -> FunPtr CDataCompletionFn -> Ptr () -> IO CInt
+foreign import ccall safe "zookeeper.h zoo_wget"
+  c_zooWGet :: Ptr CZHandle -> CString -> FunPtr CWatcherFn -> Ptr () -> CString -> Ptr CInt -> Ptr CStat -> IO CInt
 
 foreign import ccall safe "zookeeper.h zoo_set2"
   c_zooSet2 :: Ptr CZHandle -> CString -> CString -> CInt -> CInt -> Ptr CStat -> IO CInt
 
-foreign import ccall safe "zookeeper.h zoo_awget_children"
-  c_zooAWGetChildren :: Ptr CZHandle -> CString -> FunPtr CWatcherFn -> Ptr () -> FunPtr CStringsCompletionFn -> Ptr () -> IO CInt
+foreign import ccall safe "zookeeper.h zoo_wget_children"
+  c_zooWGetChildren :: Ptr CZHandle -> CString -> FunPtr CWatcherFn -> Ptr () -> Ptr CStrVec -> IO CInt
 
 foreign import ccall safe "zookeeper.h &ZOO_CREATOR_ALL_ACL"
   c_zooCreatorAclAll :: Ptr CAclVec

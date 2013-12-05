@@ -1,7 +1,7 @@
-dist
-cabal-dev
 *.o
 *.hi
 *.chi
 *.chs.h
-.virthualenv
+/dist
+/.cabal-sandbox
+/cabal.sandbox.config

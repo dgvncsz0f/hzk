@@ -1,4 +1,5 @@
-{-# LANGUAGE Safe #-}
+{-# LANGUAGE Safe          #-}
+{-# LANGUAGE TupleSections #-}
 
 -- This file is part of zhk
 --
@@ -174,7 +175,7 @@ getRecvTimeout (Zookeeper zh) = fmap fromIntegral $ c_zooRecvTimeout zh
 setDebugLevel :: ZLogLevel -> IO ()
 setDebugLevel = c_zooSetDebugLevel . fromLogLevel
 
--- | Creates a znode (asynchornous)
+-- | Creates a znode
 create :: Zookeeper
        -- ^ Zookeeper handle
        -> String
@@ -186,17 +187,18 @@ create :: Zookeeper
        -- ^ The initial ACL of the node. The ACL must not be empty
        -> [CreateFlag]
        -- ^ Optional, may be empty
-       -> (Either ZKError String -> IO ())
-       -- ^ The callback function
-       -> IO ()
-create (Zookeeper zh) path mvalue acls flags callback =
+       -> IO (Either ZKError String)
+create (Zookeeper zh) path mvalue acls flags =
   withCString path $ \pathPtr ->
     maybeUseAsCStringLen mvalue $ \(valuePtr, valueLen) ->
-      withAclList acls $ \aclPtr -> do
-        cStrFn <- wrapStringCompletion callback
-        rc     <- c_zooACreate zh pathPtr valuePtr (fromIntegral valueLen) aclPtr (fromCreateFlags flags) cStrFn nullPtr
-        unless (isZOK rc) (callback $ Left (toZKError rc))
+      withAclList acls $ \aclPtr ->
+        allocaBytes pathlen $ \newPathPtr -> do
+          rc <- c_zooCreate zh pathPtr valuePtr (fromIntegral valueLen) aclPtr (fromCreateFlags flags) newPathPtr (fromIntegral pathlen)
+          if (isZOK rc)
+            then fmap Right (peekCString newPathPtr)
+            else return (Left $ toZKError rc)
     where
+      pathlen = length path + 11
       maybeUseAsCStringLen Nothing f  = f (nullPtr, -1)
       maybeUseAsCStringLen (Just s) f = B.useAsCStringLen s f
 
@@ -232,7 +234,7 @@ exists (Zookeeper zh) path mwatcher =
       cWatcher <- wrapWatcher mwatcher
       tryZ (c_zooWExists zh pathPtr cWatcher nullPtr statPtr) (toStat statPtr)
 
--- | Lists the children of a znode (asynchronous)
+-- | Lists the children of a znode
 getChildren :: Zookeeper
             -- ^ Zookeeper handle
             -> String
@@ -241,15 +243,15 @@ getChildren :: Zookeeper
             -> Maybe Watcher
             -- ^ The watch to be set at the server to notify the user
             -- if the node changes
-            -> (Either ZKError [String] -> IO ())
-            -- ^ The callback function
-            -> IO ()
-getChildren (Zookeeper zh) path mwatcher callback =
-  withCString path (\pathPtr -> do
-    cWatcher <- wrapWatcher mwatcher
-    cStrFn   <- wrapStringsCompletion callback
-    rc       <- c_zooAWGetChildren zh pathPtr cWatcher nullPtr cStrFn nullPtr
-    unless (isZOK rc) (callback $ Left (toZKError rc)))
+            -> IO (Either ZKError [String])
+getChildren (Zookeeper zh) path mwatcher =
+  withCString path $ \pathPtr ->
+    allocaStrVec $ \strVecPtr -> do
+      cWatcher <- wrapWatcher mwatcher
+      rc       <- c_zooWGetChildren zh pathPtr cWatcher nullPtr strVecPtr
+      if (isZOK rc)
+        then fmap Right $ toStringList strVecPtr
+        else return (Left $ toZKError rc)
 
 -- | Gets the data associated with a znode (asynchronous)
 get :: Zookeeper
@@ -260,15 +262,22 @@ get :: Zookeeper
     -> Maybe Watcher
     -- ^ When provided, a watch will be set at the server to notify
     -- the client if the node changes
-    -> (Either ZKError (Maybe B.ByteString, Stat) -> IO ())
-    -- ^ The callback function
-    -> IO ()
-get (Zookeeper zh) path mwatcher callback =
-  withCString path $ \pathPtr -> do
-    cWatcher <- wrapWatcher mwatcher
-    cDataFn  <- wrapDataCompletion callback
-    rc       <- c_zooAWGet zh pathPtr cWatcher nullPtr cDataFn nullPtr
-    unless (isZOK rc) (callback $ Left (toZKError rc))
+    -> IO (Either ZKError (Maybe B.ByteString, Stat))
+get (Zookeeper zh) path mwatcher =
+  withCString path $ \pathPtr ->
+    allocaBytes buffSize $ \dataPtr ->
+      allocaStat $ \statPtr ->
+        alloca $ \buffSizePtr -> do
+          poke buffSizePtr (fromIntegral buffSize)
+          cWatcher <- wrapWatcher mwatcher
+          rc       <- c_zooWGet zh pathPtr cWatcher nullPtr dataPtr buffSizePtr statPtr
+          dataSz   <- peek buffSizePtr
+          case (isZOK rc, fromIntegral dataSz) of
+            (True, -1) -> return . Right =<< fmap (Nothing ,) (toStat statPtr)
+            (True, sz) -> return . Right =<< liftM2 (,) (fmap Just $ B.packCStringLen (dataPtr, sz)) (toStat statPtr)
+            (False, _) -> return (Left $ toZKError rc)
+    where
+      buffSize = 1024 * 1024
 
 -- | Sets the data associated with a znode (synchronous)
 set :: Zookeeper
@@ -325,14 +334,15 @@ getAcl :: Zookeeper
        -> String
        -- ^ The name of the znode expressed as a file name with slashes
        -- separating ancestors of the znode
-       -> (Either ZKError (AclList, Stat) -> IO ())
-       -- ^ The callback function
-       -> IO ()
-getAcl (Zookeeper zh) path callback =
-  withCString path $ \pathPtr -> do
-    cAclFn <- wrapAclCompletion callback
-    rc     <- c_zooAGetAcl zh pathPtr cAclFn nullPtr
-    unless (isZOK rc) (callback $ Left (toZKError rc))
+       -> IO (Either ZKError (AclList, Stat))
+getAcl (Zookeeper zh) path =
+  withCString path $ \pathPtr ->
+    allocaAclVec $ \aclVecPtr ->
+      allocaStat $ \statPtr -> do
+        rc <- c_zooGetAcl zh pathPtr aclVecPtr statPtr
+        if (isZOK rc)
+          then fmap Right $ liftM2 (,) (toAclList aclVecPtr) (toStat statPtr)
+          else return (Left $ toZKError rc)
 
 -- | Specify application credentials (asynchronous)
 --
@@ -369,16 +379,7 @@ addAuth (Zookeeper zh) scheme cert callback =
 
 -- $description
 --
--- This library provides haskell bindings for zookeeper c-library. The
--- underlying library exposes two classes of functions: synchronous
--- and asynchronous. Whenever possible the synchronous functions are
--- used.
---
--- The reason we do not always use the synchronous version is that it
--- requires the caller to allocate memory and currently it is
--- impossible to know (at least I could not figure it) how much memory
--- should be allocated. The asynchronous version has no such problem
--- as it manages memory internally.
+-- This library provides haskell bindings for zookeeper c-library (mt).
 
 -- $example
 --
@@ -397,8 +398,8 @@ addAuth (Zookeeper zh) scheme cert callback =
 -- >     takeMVar mvar >>= print
 -- >     where
 -- >       watcher mvar zh _ ConnectedState _ =
--- >         create zh "/foobar" Nothing OpenAclUnsafe [] $ \_ ->
--- >           getChildren zh "/" Nothing (putMVar mvar)
+-- >         void $ create zh "/foobar" Nothing OpenAclUnsafe []
+-- >         getChildren zh "/" Nothing >>= putMVar mvar
 
 -- $notes
 --   * Watcher callbacks must never block;

@@ -62,35 +62,30 @@ disclaimer = do
 testExists zh = testGroup "exists"
   [ testCase "exists after create" $ do
       let path = chroot "/testExists#1"
-      mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        exists zh path Nothing >>= putMVar mvar . either (const False) (const True))
-      takeMVar mvar @? "== Right _"
+      create zh path Nothing OpenAclUnsafe []
+      exists zh path Nothing >>= (@? "== Right _") . (either (const False) (const True))
   , testCase "exists without znode" $ do
       let path = chroot "/testExists#2"
-      mvar <- newEmptyMVar
       exists zh path Nothing >>= (@?= Left NoNodeError)
   , testCase "exists(watcher) and create" $ do
       let path = chroot "/testExists#3"
       mvar <- newEmptyMVar
       exists zh path (Just $ watcher mvar) >>= (@?= Left NoNodeError)
-      create zh path Nothing OpenAclUnsafe [] (const $ return ())
+      create zh path Nothing OpenAclUnsafe []
       takeMVar mvar >>= (@?= (CreatedEvent, Just path))
   , testCase "exists(watcher) and set" $ do
       let path = chroot "/testExists#4"
       mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ -> do
-        exists zh path (Just $ watcher mvar)
-        set zh path Nothing Nothing
-        return ())
+      create zh path Nothing OpenAclUnsafe []
+      exists zh path (Just $ watcher mvar)
+      set zh path Nothing Nothing
       takeMVar mvar >>= (@?= (ChangedEvent, Just path))
   , testCase "exists(watcher) and delete" $ do
       let path = chroot "/testExists#5"
       mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ -> do
-        exists zh path (Just $ watcher mvar)
-        delete zh path Nothing
-        return ())
+      create zh path Nothing OpenAclUnsafe []
+      exists zh path (Just $ watcher mvar)
+      delete zh path Nothing
       takeMVar mvar >>= (@?= (DeletedEvent, Just path))
   ]
     where
@@ -99,32 +94,28 @@ testExists zh = testGroup "exists"
 testGet zh = testGroup "get"
   [ testCase "get without znode" $ do
       let path = chroot "/testGet#1"
-      mvar <- newEmptyMVar
-      get zh path Nothing (putMVar mvar)
-      takeMVar mvar >>= (@?= Left NoNodeError)
+      get zh path Nothing >>= (@?= Left NoNodeError)
   , testCase "create(nodata) and get" $ do
       let path = chroot "/testGet#2"
-      mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        get zh path Nothing (putMVar mvar . either (const False) (isNothing . fst)))
-      takeMVar mvar @? "== Right (Nothing, _)"
+      create zh path Nothing OpenAclUnsafe []
+      get zh path Nothing >>= (@? "== Right (Nothing, _)") . (either (const False) (isNothing . fst))
   , testCase "create(data) and get" $ do
       let path = chroot "/testGet#3"
-      mvar <- newEmptyMVar
-      create zh path (Just "foobar") OpenAclUnsafe [] (\_ ->
-        get zh path Nothing (putMVar mvar . either (const False) ((== Just "foobar") . fst)))
-      takeMVar mvar @? "== Right (Just \"foobar\", _)"
+      create zh path (Just "foobar") OpenAclUnsafe []
+      get zh path Nothing >>= (@? "== Right (Just \"foobar\", _)") . (either (const False) ((== Just "foobar") . fst))
   , testCase "get(watcher) and set" $ do
       let path = chroot "/testGet#4"
       mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        get zh path (Just $ watcher mvar) (\_ -> set zh path Nothing Nothing >> return ()))
+      create zh path Nothing OpenAclUnsafe []
+      get zh path (Just $ watcher mvar)
+      set zh path Nothing Nothing
       takeMVar mvar >>= (@?= (ChangedEvent, Just path))
   , testCase "get(watcher) and delete" $ do
       let path = chroot "/testGet#5"
       mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        get zh path (Just $ watcher mvar) (\_ -> delete zh path Nothing >> return ()))
+      create zh path Nothing OpenAclUnsafe []
+      get zh path (Just $ watcher mvar)
+      delete zh path Nothing
       takeMVar mvar >>= (@?= (DeletedEvent, Just path))
   ]
     where
@@ -133,48 +124,39 @@ testGet zh = testGroup "get"
 testOwnsEphemeral zh = testGroup "ownsEphemeral"
   [ testCase "get ephemeral" $ do
     let path = chroot "/testGet#6"
-    mvar <- newEmptyMVar
-    create zh path Nothing OpenAclUnsafe [Ephemeral] (\_ ->
-      get zh path Nothing (\(Right (_, stat)) -> do
-        myId <- getClientId zh
-        putMVar mvar =<< ownsEphemeral myId stat))
-    takeMVar mvar @? "owns ephemeral"
+    create zh path Nothing OpenAclUnsafe [Ephemeral]
+    (Right (_, stat)) <- get zh path Nothing
+    myId <- getClientId zh
+    ownsEphemeral myId stat @? "owns ephemeral"
   ]
 
 testGetChildren zh = testGroup "getChildren"
   [ testCase "getChildren without znode" $ do
       let path = chroot "/testGetChildren#1"
-      mvar <- newEmptyMVar
-      getChildren zh path Nothing (putMVar mvar)
-      takeMVar mvar >>= (@?= Left NoNodeError)
+      getChildren zh path Nothing >>= (@?= Left NoNodeError)
   , testCase "getChildren after create" $ do
       let path = chroot "/testGetChildren#2"
-      mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        getChildren zh path Nothing (putMVar mvar))
-      takeMVar mvar >>= (@?= Right [])
+      create zh path Nothing OpenAclUnsafe []
+      getChildren zh path Nothing >>= (@?= Right [])
   , testCase "getChildren with one child" $ do
       let path = chroot "/testGetChildren#3"
-      mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        create zh (path ++ "/1") Nothing OpenAclUnsafe [] (\_ ->
-          getChildren zh path Nothing (putMVar mvar)))
-      takeMVar mvar >>= (@?= Right ["1"])
+      create zh path Nothing OpenAclUnsafe []
+      create zh (path ++ "/1") Nothing OpenAclUnsafe []
+      getChildren zh path Nothing >>= (@?= Right ["1"])
   , testCase "getChildren(watcher) and create child" $ do
       let path = chroot "/testGetChildren#4"
       mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        getChildren zh path (Just $ watcher mvar) (\_ ->
-          create zh (path ++ "/1") Nothing OpenAclUnsafe [] (const $ return ())))
+      create zh path Nothing OpenAclUnsafe []
+      getChildren zh path (Just $ watcher mvar)
+      create zh (path ++ "/1") Nothing OpenAclUnsafe []
       takeMVar mvar >>= (@?= (ChildEvent, Just path))
   , testCase "getChildren(watcher) and delete child" $ do
       let path = chroot "/testGetChildren#5"
       mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        create zh (path ++ "/1") Nothing OpenAclUnsafe [] (\_ ->
-          getChildren zh path (Just $ watcher mvar) (\_ -> do
-            delete zh (path ++ "/1") Nothing
-            return ())))
+      create zh path Nothing OpenAclUnsafe []
+      create zh (path ++ "/1") Nothing OpenAclUnsafe []
+      getChildren zh path (Just $ watcher mvar)
+      delete zh (path ++ "/1") Nothing
       takeMVar mvar >>= (@?= (ChildEvent, Just path))
   ]
     where
@@ -183,10 +165,8 @@ testGetChildren zh = testGroup "getChildren"
 testGetAcl zh = testGroup "getAcl"
   [ testCase "getAcl" $ do
       let path = chroot "/testGetAcl#1"
-      mvar <- newEmptyMVar
-      create zh path Nothing OpenAclUnsafe [] (\_ ->
-        getAcl zh path (putMVar mvar . either (const 0) (countAcls . fst)))
-      takeMVar mvar >>= (@?= 1)
+      create zh path Nothing OpenAclUnsafe []
+      getAcl zh path >>= (@?= 1) . (either (const 0) (countAcls . fst))
   , testCase "getAcl flags" $ do
       let path  = chroot "/testGetAcl#2"
           flags = [ []
@@ -197,12 +177,10 @@ testGetAcl zh = testGroup "getAcl"
                   , [CanRead, CanAdmin, CanWrite, CanCreate, CanDelete]
                   ]
       forM_ flags $ \flag -> do
-        mvar <- newEmptyMVar
-        create zh path Nothing (List [Acl "world" "anyone" flag]) [] (\_ -> do
-          getAcl zh path (\rc -> do
-            delete zh path Nothing
-            putMVar mvar (either (const []) (getFlags . fst) rc)))
-        takeMVar mvar >>= (@?= flag)
+        create zh path Nothing (List [Acl "world" "anyone" flag]) []
+        rc <- getAcl zh path
+        delete zh path Nothing
+        (either (const []) (getFlags . fst) rc) @?= flag
   ]
     where
       countAcls (List xs) = length xs
@@ -214,25 +192,23 @@ testGetAcl zh = testGroup "getAcl"
 rmrf :: Zookeeper -> String -> IO ()
 rmrf zh path = do
   let childPath name = path ++ "/" ++ name
-  mvar <- newEmptyMVar
-  getChildren zh path Nothing (putMVar mvar)
-  takeMVar mvar >>= either (const $ return ()) (mapM_ (rmrf zh . childPath))
-  delete zh path Nothing
-  return ()
+  children <- getChildren zh path Nothing
+  case children of
+    Right xs -> mapM_ (rmrf zh . childPath) xs
+    Left _   -> return ()
+  void $ delete zh path Nothing
 
 main :: IO ()
 main = do
   disclaimer
   endpoint   <- getEndpoint
   waitState  <- newEmptyMVar
-  waitCreate <- newEmptyMVar
   withZookeeper endpoint 5000 (Just $ watcher waitState) Nothing $ \zh -> do
     state <- takeMVar waitState
     case state of
       ConnectedState -> do
         rmrf zh (chroot "")
-        create zh (chroot "") Nothing OpenAclUnsafe [] (putMVar waitCreate)
-        takeMVar waitCreate
+        create zh (chroot "") Nothing OpenAclUnsafe []
         defaultMain $ testGroup "Zookeeper" [ testGet zh
                                             , testExists zh
                                             , testGetAcl zh
