@@ -1,5 +1,8 @@
 -*- mode: text; -*-
 
+v2.1.0 | 2014-10-16
+  * add Data.Zookeeper.Pool | junjihashimoto
+
 v2.0.0 | 2013-12-05
   * create, getChildren, getStat are now synchronous | dgvncsz0f
 
