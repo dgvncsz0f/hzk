@@ -130,8 +130,7 @@ withZookeeper endpoint timeout watcher clientId io = do
   withCString endpoint $ \strPtr -> mask $ \restore -> do
     cWatcher <- wrapWatcher watcher
     zh       <- throwIfNull "zookeeper_init" $ c_zookeeperInit strPtr cWatcher (fromIntegral timeout) cClientIdPtr nullPtr 0
-    value    <- (restore $ io (Zookeeper zh)) `onException` c_zookeeperClose zh
-    c_zookeeperClose zh
+    restore (io $ Zookeeper zh) `finally` c_zookeeperClose zh
     return value
     where
       cClientIdPtr = case clientId of
