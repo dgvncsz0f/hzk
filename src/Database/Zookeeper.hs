@@ -124,7 +124,7 @@ withZookeeper :: String
               -- this client will be reconnecting to
               -> (Zookeeper -> IO a)
               -- ^ The main loop. The session is terminated when this
-              -- function exists (successfully or not)
+              -- function exits (successfully or not)
               -> IO a
 withZookeeper endpoint timeout watcher clientId io = do
   withCString endpoint $ \strPtr -> mask $ \restore -> do
@@ -353,7 +353,7 @@ getAcl (Zookeeper zh) path =
 --
 --   * the server connection is dropped;
 --
---   * the watcher is called witht AuthFailedState value as the state
+--   * the watcher is called with AuthFailedState value as the state
 --   parameter;
 addAuth :: Zookeeper
         -- ^ Zookeeper handle
@@ -397,7 +397,7 @@ addAuth (Zookeeper zh) scheme cert callback =
 -- >   withZookeeper "localhost:2181" 1000 (Just $ watcher mvar) Nothing $ \_ -> do
 -- >     takeMVar mvar >>= print
 -- >     where
--- >       watcher mvar zh _ ConnectedState _ =
+-- >       watcher mvar zh _ ConnectedState _ = do
 -- >         void $ create zh "/foobar" Nothing OpenAclUnsafe []
 -- >         getChildren zh "/" Nothing >>= putMVar mvar
 
